@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { primaryNav } from "@/config/nav";
@@ -16,6 +16,12 @@ export function Nav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { data: session } = useSession();
+
+  function handleStartProjectClick(e: MouseEvent<HTMLElement>) {
+    if (!pathname.startsWith("/start-a-project")) return;
+    e.preventDefault();
+    window.dispatchEvent(new Event("project-form:reset"));
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -44,6 +50,7 @@ export function Nav() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={item.href === "/start-a-project" ? handleStartProjectClick : undefined}
                 className={cn(
                   "text-sm font-medium tracking-tight transition-colors",
                   pathname.startsWith(item.href)
@@ -62,7 +69,7 @@ export function Nav() {
                 Client Portal
               </ButtonLink>
             ) : (
-              <ButtonLink href="/start-a-project" variant="primary" size="sm">
+              <ButtonLink href="/start-a-project" variant="primary" size="sm" onClick={handleStartProjectClick}>
                 Start a Project
               </ButtonLink>
             )}
@@ -96,6 +103,7 @@ export function Nav() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={item.href === "/start-a-project" ? handleStartProjectClick : undefined}
               className={cn(
                 "rounded-md px-3 py-3 text-base font-medium transition-colors",
                 pathname.startsWith(item.href) ? "bg-gold/5 text-gold" : "text-ink hover:bg-gold/5",
@@ -110,7 +118,7 @@ export function Nav() {
                 Client Portal
               </ButtonLink>
             ) : (
-              <ButtonLink href="/start-a-project" variant="primary" size="md">
+              <ButtonLink href="/start-a-project" variant="primary" size="md" onClick={handleStartProjectClick}>
                 Start a Project
               </ButtonLink>
             )}

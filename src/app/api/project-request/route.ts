@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { projectRequestSchema } from "@/lib/validation/project-request";
 import { collection, Collections, type ProjectRequestDoc } from "@/lib/db/collections";
@@ -82,57 +82,61 @@ export async function POST(req: NextRequest) {
     userAgent,
   };
 
-  // Best-effort persistence — request should not fail if Mongo is not configured yet.
-  let persisted = false;
-  try {
-    if (process.env.MONGODB_URI) {
-      const col = await collection<ProjectRequestDoc>(Collections.ProjectRequests);
-      await col.insertOne(doc);
-      persisted = true;
+  // Respond fast, then run network-bound tasks in the background.
+  // This keeps UX snappy on free-tier cold starts and slower network paths.
+  after(async () => {
+    // Best-effort persistence — request should not fail if Mongo is not configured yet.
+    let persisted = false;
+    try {
+      if (process.env.MONGODB_URI) {
+        const col = await collection<ProjectRequestDoc>(Collections.ProjectRequests);
+        await col.insertOne(doc);
+        persisted = true;
+      }
+    } catch (err) {
+      console.error("[project-request] db write failed", err);
     }
-  } catch (err) {
-    console.error("[project-request] db write failed", err);
-  }
 
-  await audit({
-    type: "project_request.received",
-    actor: doc.email,
-    ip,
-    userAgent,
-    meta: { projectType: doc.projectType, persisted },
+    await audit({
+      type: "project_request.received",
+      actor: doc.email,
+      ip,
+      userAgent,
+      meta: { projectType: doc.projectType, persisted },
+    });
+
+    // Best-effort notification email via Resend.
+    try {
+      if (process.env.AUTH_RESEND_KEY && process.env.NOTIFY_EMAIL) {
+        const { Resend } = await import("resend");
+        const resend = new Resend(process.env.AUTH_RESEND_KEY);
+        await resend.emails.send({
+          from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+          to: process.env.NOTIFY_EMAIL,
+          replyTo: doc.email,
+          subject: `New project request — ${doc.projectType} — ${doc.name}`,
+          text: [
+            `From:        ${doc.name} <${doc.email}>`,
+            `Company:     ${doc.company || "—"}`,
+            `Project:     ${doc.projectType}`,
+            `Budget:      ${doc.budget || "—"}`,
+            `Timeline:    ${doc.timeline || "—"}`,
+            `Website:     ${doc.existingWebsite || "—"}`,
+            `Contact:     ${doc.preferredContact || "Email"}`,
+            "",
+            "Description:",
+            doc.description,
+            "",
+            `— sent from ${site.url}`,
+          ].join("\n"),
+        });
+      }
+    } catch (err) {
+      console.error("[project-request] notify failed", err);
+    }
   });
 
-  // Best-effort notification email via Resend.
-  try {
-    if (process.env.AUTH_RESEND_KEY && process.env.NOTIFY_EMAIL) {
-      const { Resend } = await import("resend");
-      const resend = new Resend(process.env.AUTH_RESEND_KEY);
-      await resend.emails.send({
-        from: process.env.EMAIL_FROM || "onboarding@resend.dev",
-        to: process.env.NOTIFY_EMAIL,
-        replyTo: doc.email,
-        subject: `New project request — ${doc.projectType} — ${doc.name}`,
-        text: [
-          `From:        ${doc.name} <${doc.email}>`,
-          `Company:     ${doc.company || "—"}`,
-          `Project:     ${doc.projectType}`,
-          `Budget:      ${doc.budget || "—"}`,
-          `Timeline:    ${doc.timeline || "—"}`,
-          `Website:     ${doc.existingWebsite || "—"}`,
-          `Contact:     ${doc.preferredContact || "Email"}`,
-          "",
-          "Description:",
-          doc.description,
-          "",
-          `— sent from ${site.url}`,
-        ].join("\n"),
-      });
-    }
-  } catch (err) {
-    console.error("[project-request] notify failed", err);
-  }
-
-  return NextResponse.json({ ok: true, persisted });
+  return NextResponse.json({ ok: true, accepted: true });
 }
 
 export function GET() {

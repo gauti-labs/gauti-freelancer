@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,18 @@ export function ProjectForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    const reset = () => {
+      setStatus("idle");
+      setErrorMsg(null);
+      setFieldErrors({});
+      formRef.current?.reset();
+    };
+    window.addEventListener("project-form:reset", reset);
+    return () => window.removeEventListener("project-form:reset", reset);
+  }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,6 +42,7 @@ export function ProjectForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        keepalive: true,
       });
       const data = (await res.json()) as { ok: boolean; error?: string; fieldErrors?: Record<string, string> };
       if (!res.ok || !data.ok) {
@@ -56,12 +69,15 @@ export function ProjectForm() {
         <p className="mt-3 text-ink-muted">
           Thanks for reaching out. I&apos;ll review your project and get back to you within one to two business days.
         </p>
+        <p className="mt-2 text-xs text-ink-subtle">
+          Saved successfully. Email notification may take a few seconds.
+        </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-6">
+    <form ref={formRef} onSubmit={onSubmit} noValidate className="grid gap-6">
       {/* Honeypot */}
       <input type="text" name="website_hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
 
