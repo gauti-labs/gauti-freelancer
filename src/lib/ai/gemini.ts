@@ -186,7 +186,9 @@ Rules:
 - If asked unrelated or unsafe topics, politely decline and redirect to software/business support.
 - Never invent exact prices or exact delivery timelines.
 - Encourage visitors to use "Start a Project" for detailed scoping.
-- Keep responses under 120 words where possible.`;
+- Keep responses under 120 words where possible.
+- Always end with a complete sentence (never cut off mid-thought).
+- Use plain text only (no markdown tables or code blocks).`;
 
 /**
  * Public chatbot helper for unauthenticated visitors.
@@ -204,7 +206,7 @@ export async function answerPublicChat(message: string): Promise<string> {
       config: {
         systemInstruction: PUBLIC_CHAT_SYSTEM_INSTRUCTION,
         temperature: 0.35,
-        maxOutputTokens: 300,
+        maxOutputTokens: 420,
         abortSignal: controller.signal,
       },
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, MessageCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
@@ -24,11 +24,41 @@ export function PublicChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [atTop, setAtTop] = useState(true);
+  const [atBottom, setAtBottom] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", content: WELCOME_MESSAGE },
   ]);
 
   const canSend = useMemo(() => input.trim().length >= 2 && !loading, [input, loading]);
+
+  function updateScrollState() {
+    const el = messagesRef.current;
+    if (!el) return;
+    const overflow = el.scrollHeight > el.clientHeight + 2;
+    const top = el.scrollTop <= 4;
+    const bottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+    setHasOverflow(overflow);
+    setAtTop(top);
+    setAtBottom(bottom);
+  }
+
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    updateScrollState();
+  }, [messages, loading, error]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => updateScrollState();
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
 
   async function sendMessage(rawText: string) {
     const text = rawText.trim();
@@ -68,7 +98,11 @@ export function PublicChatWidget() {
   return (
     <div className="fixed bottom-4 right-4 z-[60] sm:bottom-6 sm:right-6">
       {open ? (
-        <div className="w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-xl border border-hairline/25 bg-base/95 shadow-2xl backdrop-blur-xl">
+        <div
+          className="w-[calc(100vw-1rem)] max-w-sm overflow-hidden rounded-xl border border-hairline/25 bg-base/95 shadow-2xl backdrop-blur-xl overscroll-contain sm:w-[calc(100vw-2rem)]"
+          onWheelCapture={(e) => e.stopPropagation()}
+          onTouchMoveCapture={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center justify-between border-b border-hairline/20 px-4 py-3">
             <div>
               <p className="font-display text-lg text-ink">Ask Gautam&apos;s AI</p>
@@ -84,55 +118,73 @@ export function PublicChatWidget() {
             </button>
           </div>
 
-          <div className="max-h-80 space-y-3 overflow-y-auto px-4 py-4">
-            {messages.length === 1 && !loading && (
-              <div className="flex flex-wrap gap-2">
-                {QUICK_ACTIONS.map((action) =>
-                  action.type === "ask" ? (
-                    <button
-                      key={action.label}
-                      type="button"
-                      onClick={() => void sendMessage(action.prompt)}
-                      disabled={loading}
-                      className="rounded-full border border-hairline/30 bg-elevated/40 px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-gold/50 hover:text-gold"
-                    >
-                      {action.label}
-                    </button>
-                  ) : (
-                    <a
-                      key={action.label}
-                      href={action.href}
-                      onClick={() => setOpen(false)}
-                      className="rounded-full border border-hairline/30 bg-elevated/40 px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-gold/50 hover:text-gold"
-                    >
-                      {action.label}
-                    </a>
-                  ),
-                )}
-              </div>
-            )}
+          <div className="relative">
+            <div
+              ref={messagesRef}
+              onScroll={updateScrollState}
+              className="max-h-[min(62vh,22rem)] space-y-3 overflow-y-auto px-4 py-4 overscroll-contain"
+            >
+              {messages.length === 1 && !loading && (
+                <div className="flex flex-wrap gap-2">
+                  {QUICK_ACTIONS.map((action) =>
+                    action.type === "ask" ? (
+                      <button
+                        key={action.label}
+                        type="button"
+                        onClick={() => void sendMessage(action.prompt)}
+                        disabled={loading}
+                        className="rounded-full border border-hairline/30 bg-elevated/40 px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-gold/50 hover:text-gold"
+                      >
+                        {action.label}
+                      </button>
+                    ) : (
+                      <a
+                        key={action.label}
+                        href={action.href}
+                        onClick={() => setOpen(false)}
+                        className="rounded-full border border-hairline/30 bg-elevated/40 px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-gold/50 hover:text-gold"
+                      >
+                        {action.label}
+                      </a>
+                    ),
+                  )}
+                </div>
+              )}
 
-            {messages.map((m, idx) => (
-              <div
-                key={`${m.role}-${idx}`}
-                className={cn(
-                  "max-w-[85%] rounded-lg px-3 py-2 text-sm",
-                  m.role === "assistant"
-                    ? "border border-hairline/25 bg-elevated/50 text-ink"
-                    : "ml-auto bg-gold-gradient text-[hsl(var(--bg-base))]",
-                )}
-              >
-                {m.content}
-              </div>
-            ))}
-            {loading && (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-hairline/25 bg-elevated/50 px-3 py-2 text-sm text-ink-muted">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Thinking...
-              </div>
+              {messages.map((m, idx) => (
+                <div
+                  key={`${m.role}-${idx}`}
+                  className={cn(
+                    "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                    m.role === "assistant"
+                      ? "border border-hairline/25 bg-elevated/50 text-ink"
+                      : "ml-auto bg-gold-gradient text-[hsl(var(--bg-base))]",
+                  )}
+                >
+                  {m.content}
+                </div>
+              ))}
+              {loading && (
+                <div className="inline-flex items-center gap-2 rounded-lg border border-hairline/25 bg-elevated/50 px-3 py-2 text-sm text-ink-muted">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Thinking...
+                </div>
+              )}
+              {error && (
+                <p className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">{error}</p>
+              )}
+            </div>
+
+            {hasOverflow && !atTop && (
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-7 bg-gradient-to-b from-base/95 to-transparent" />
             )}
-            {error && (
-              <p className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">{error}</p>
+            {hasOverflow && !atBottom && (
+              <>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-base/95 to-transparent" />
+                <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-mono text-[10px] uppercase tracking-widest text-ink-subtle">
+                  Scroll for more
+                </p>
+              </>
             )}
           </div>
 
@@ -161,10 +213,10 @@ export function PublicChatWidget() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open chat assistant"
-          className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-base/90 px-4 py-2.5 text-sm text-ink shadow-[0_12px_30px_-18px_hsl(var(--gold-primary)/0.8)] backdrop-blur-md transition-colors hover:border-gold/70 hover:text-gold"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-gold/40 bg-base/90 text-sm text-ink shadow-[0_12px_30px_-18px_hsl(var(--gold-primary)/0.8)] backdrop-blur-md transition-colors hover:border-gold/70 hover:text-gold sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5"
         >
           <MessageCircle className="h-4 w-4 text-gold" />
-          Ask AI
+          <span className="hidden sm:inline">Ask AI</span>
         </button>
       )}
     </div>

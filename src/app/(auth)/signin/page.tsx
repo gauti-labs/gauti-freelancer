@@ -19,6 +19,27 @@ function safeCallback(input: string | undefined): string {
   return input;
 }
 
+function isRedirectError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("digest" in error)) return false;
+  const digest = (error as { digest?: unknown }).digest;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
+function signInErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case "EmailSignin":
+      return "Could not send magic link email. Please verify email configuration and try again.";
+    case "OAuthSignin":
+      return "Could not start provider sign-in. Please try again.";
+    case "Callback":
+      return "The sign-in link is invalid or expired. Please request a new link.";
+    case "Configuration":
+      return "Authentication is not configured correctly yet. Please try again shortly.";
+    default:
+      return "Sign-in failed. Please try again.";
+  }
+}
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -46,7 +67,7 @@ export default async function SignInPage({
 
         {error && (
           <p className="mt-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-400">
-            Sign-in failed. Please try again.
+            {signInErrorMessage(error)}
           </p>
         )}
 
@@ -62,7 +83,12 @@ export default async function SignInPage({
             <form
               action={async () => {
                 "use server";
-                await signIn("google", { redirectTo: callbackUrl });
+                try {
+                  await signIn("google", { redirectTo: callbackUrl });
+                } catch (error) {
+                  if (isRedirectError(error)) throw error;
+                  redirect(`/signin?error=OAuthSignin&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+                }
               }}
               className="mt-8"
             >
@@ -87,7 +113,12 @@ export default async function SignInPage({
             action={async (formData: FormData) => {
               "use server";
               const email = String(formData.get("email") || "");
-              await signIn("resend", { email, redirectTo: callbackUrl });
+              try {
+                await signIn("resend", { email, redirectTo: callbackUrl });
+              } catch (error) {
+                if (isRedirectError(error)) throw error;
+                redirect(`/signin?error=EmailSignin&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+              }
             }}
             className="flex flex-col gap-4"
           >
