@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Gautam Goyal">
+  <defs>
+    <linearGradient id="gg-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE566"/>
+      <stop offset="55%" stop-color="#E8A800"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+  </defs>
+  <polygon points="100,20 168,60 168,140 100,180 32,140 32,60" fill="none" stroke="url(#gg-gold)" stroke-width="2" opacity="0.55"/>
+  <polygon points="100,36 154,68 154,132 100,164 46,132 46,68" fill="none" stroke="url(#gg-gold)" stroke-width="1" opacity="0.3"/>
+  <text x="72" y="118" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="700" fill="url(#gg-gold)" text-anchor="middle" letter-spacing="-2">G</text>
+  <text x="128" y="118" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="700" fill="url(#gg-gold)" text-anchor="middle" letter-spacing="-2">G</text>
+  <circle cx="100" cy="30" r="2" fill="#E8A800" opacity="0.8"/>
+  <circle cx="100" cy="170" r="2" fill="#E8A800" opacity="0.8"/>
+</svg>
