@@ -1,4 +1,4 @@
-import { after, NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { projectRequestSchema } from "@/lib/validation/project-request";
 import { collection, Collections, type ProjectRequestDoc } from "@/lib/db/collections";
@@ -15,6 +15,9 @@ const MAX_BODY_BYTES = 32 * 1024; // 32 KB
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const RATE_MAX = 5; // requests per IP per window
 const ipHits = new Map<string, number[]>();
+const DB_TIMEOUT_MS = 3500;
+const EMAIL_TIMEOUT_MS = 3000;
+const AUDIT_TIMEOUT_MS = 2000;
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
@@ -28,6 +31,15 @@ function clientIp(req: NextRequest): string {
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]!.trim();
   return req.headers.get("x-real-ip") || "unknown";
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
 }
 
 export async function POST(req: NextRequest) {
@@ -82,61 +94,65 @@ export async function POST(req: NextRequest) {
     userAgent,
   };
 
-  // Respond fast, then run network-bound tasks in the background.
-  // This keeps UX snappy on free-tier cold starts and slower network paths.
-  after(async () => {
-    // Best-effort persistence — request should not fail if Mongo is not configured yet.
-    let persisted = false;
-    try {
-      if (process.env.MONGODB_URI) {
-        const col = await collection<ProjectRequestDoc>(Collections.ProjectRequests);
-        await col.insertOne(doc);
-        persisted = true;
-      }
-    } catch (err) {
-      console.error("[project-request] db write failed", err);
+  // Keep user latency low: persist first, then run non-critical tasks in parallel
+  // with short timeouts so the endpoint never hangs.
+  let persisted = false;
+  try {
+    if (process.env.MONGODB_URI) {
+      const col = await collection<ProjectRequestDoc>(Collections.ProjectRequests);
+      await withTimeout(col.insertOne(doc), DB_TIMEOUT_MS, "Mongo insert");
+      persisted = true;
     }
+  } catch (err) {
+    console.error("[project-request] db write failed", err);
+  }
 
-    await audit({
+  const auditTask = withTimeout(
+    audit({
       type: "project_request.received",
       actor: doc.email,
       ip,
       userAgent,
       meta: { projectType: doc.projectType, persisted },
+    }),
+    AUDIT_TIMEOUT_MS,
+    "Audit log",
+  ).catch((err) => console.error("[project-request] audit failed", err));
+
+  const notifyTask = (async () => {
+    if (!process.env.AUTH_RESEND_KEY || !process.env.NOTIFY_EMAIL) return;
+    const { Resend } = await import("resend");
+    const resend = new Resend(process.env.AUTH_RESEND_KEY);
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM || "onboarding@resend.dev",
+      to: process.env.NOTIFY_EMAIL,
+      replyTo: doc.email,
+      subject: `New project request — ${doc.projectType} — ${doc.name}`,
+      text: [
+        `From:        ${doc.name} <${doc.email}>`,
+        `Company:     ${doc.company || "—"}`,
+        `Project:     ${doc.projectType}`,
+        `Budget:      ${doc.budget || "—"}`,
+        `Timeline:    ${doc.timeline || "—"}`,
+        `Website:     ${doc.existingWebsite || "—"}`,
+        `Contact:     ${doc.preferredContact || "Email"}`,
+        "",
+        "Description:",
+        doc.description,
+        "",
+        `— sent from ${site.url}`,
+      ].join("\n"),
     });
+  })();
 
-    // Best-effort notification email via Resend.
-    try {
-      if (process.env.AUTH_RESEND_KEY && process.env.NOTIFY_EMAIL) {
-        const { Resend } = await import("resend");
-        const resend = new Resend(process.env.AUTH_RESEND_KEY);
-        await resend.emails.send({
-          from: process.env.EMAIL_FROM || "onboarding@resend.dev",
-          to: process.env.NOTIFY_EMAIL,
-          replyTo: doc.email,
-          subject: `New project request — ${doc.projectType} — ${doc.name}`,
-          text: [
-            `From:        ${doc.name} <${doc.email}>`,
-            `Company:     ${doc.company || "—"}`,
-            `Project:     ${doc.projectType}`,
-            `Budget:      ${doc.budget || "—"}`,
-            `Timeline:    ${doc.timeline || "—"}`,
-            `Website:     ${doc.existingWebsite || "—"}`,
-            `Contact:     ${doc.preferredContact || "Email"}`,
-            "",
-            "Description:",
-            doc.description,
-            "",
-            `— sent from ${site.url}`,
-          ].join("\n"),
-        });
-      }
-    } catch (err) {
-      console.error("[project-request] notify failed", err);
-    }
-  });
+  await Promise.allSettled([
+    auditTask,
+    withTimeout(notifyTask, EMAIL_TIMEOUT_MS, "Resend email").catch((err) =>
+      console.error("[project-request] notify failed", err),
+    ),
+  ]);
 
-  return NextResponse.json({ ok: true, accepted: true });
+  return NextResponse.json({ ok: true, persisted });
 }
 
 export function GET() {
