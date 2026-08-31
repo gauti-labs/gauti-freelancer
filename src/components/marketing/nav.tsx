@@ -69,9 +69,14 @@ export function Nav() {
                 Client Portal
               </ButtonLink>
             ) : (
-              <ButtonLink href="/start-a-project" variant="primary" size="sm" onClick={handleStartProjectClick}>
-                Start a Project
-              </ButtonLink>
+              <>
+                <ButtonLink href="/signin" variant="secondary" size="sm">
+                  Sign In
+                </ButtonLink>
+                <ButtonLink href="/start-a-project" variant="primary" size="sm" onClick={handleStartProjectClick}>
+                  Start a Project
+                </ButtonLink>
+              </>
             )}
             <ThemeToggle />
           </div>
@@ -118,9 +123,14 @@ export function Nav() {
                 Client Portal
               </ButtonLink>
             ) : (
-              <ButtonLink href="/start-a-project" variant="primary" size="md" onClick={handleStartProjectClick}>
-                Start a Project
-              </ButtonLink>
+              <>
+                <ButtonLink href="/signin" variant="secondary" size="md">
+                  Sign In
+                </ButtonLink>
+                <ButtonLink href="/start-a-project" variant="primary" size="md" onClick={handleStartProjectClick}>
+                  Start a Project
+                </ButtonLink>
+              </>
             )}
           </div>
         </nav>

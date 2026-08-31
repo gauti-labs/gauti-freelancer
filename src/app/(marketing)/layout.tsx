@@ -1,5 +1,6 @@
 import { Nav } from "@/components/marketing/nav";
 import { Footer } from "@/components/marketing/footer";
+import { PublicChatWidget } from "@/components/marketing/public-chat-widget";
 import { PersonJsonLd, WebSiteJsonLd, ProfessionalServiceJsonLd } from "@/components/seo/json-ld";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       <Footer />
+      <PublicChatWidget />
     </>
   );
 }

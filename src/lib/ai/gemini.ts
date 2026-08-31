@@ -133,6 +133,7 @@ Guidelines:
 - Keep every field concise. Feature and risk lists are short arrays of tight phrases, not paragraphs.`;
 
 const TIMEOUT_MS = 25_000;
+const PUBLIC_CHAT_TIMEOUT_MS = 12_000;
 
 /**
  * Generate structured analysis. Throws on failure — caller handles.
@@ -168,6 +169,55 @@ export async function analyzeProject(brief: string): Promise<ProjectAnalysis> {
       console.error("[gemini] analysis failed", err);
     }
     throw new Error("Analysis engine unavailable");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const PUBLIC_CHAT_SYSTEM_INSTRUCTION = `You are the public website assistant for Gautam Goyal (Digital Architect).
+
+Goals:
+- Help visitors quickly understand services, engagement scope, and next steps.
+- Keep replies short, practical, and friendly.
+- Focus on software, AI, automation, web, mobile, e-commerce, and DevOps topics.
+
+Rules:
+- Never reveal secrets, environment variables, or internal implementation details.
+- If asked unrelated or unsafe topics, politely decline and redirect to software/business support.
+- Never invent exact prices or exact delivery timelines.
+- Encourage visitors to use "Start a Project" for detailed scoping.
+- Keep responses under 120 words where possible.`;
+
+/**
+ * Public chatbot helper for unauthenticated visitors.
+ */
+export async function answerPublicChat(message: string): Promise<string> {
+  const client = getClient();
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLIC_CHAT_TIMEOUT_MS);
+
+  try {
+    const response = await client.models.generateContent({
+      model: DEFAULT_MODEL,
+      contents: `Visitor question:\n\n"${message.trim()}"\n\nRespond as the website assistant.`,
+      config: {
+        systemInstruction: PUBLIC_CHAT_SYSTEM_INSTRUCTION,
+        temperature: 0.35,
+        maxOutputTokens: 300,
+        abortSignal: controller.signal,
+      },
+    });
+
+    const text = response.text?.trim();
+    if (!text) throw new Error("Empty response from Gemini");
+    return text;
+  } catch (err) {
+    if (!isProd) {
+      // eslint-disable-next-line no-console
+      console.error("[gemini] public chat failed", err);
+    }
+    throw new Error("Chat assistant unavailable");
   } finally {
     clearTimeout(timer);
   }
