@@ -12,6 +12,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // OneDrive on Windows can break recursive cleanup of the default ".next" path.
+  // Using a dedicated dist directory avoids repeated EINVAL readlink failures.
+  distDir: ".next-dev",
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

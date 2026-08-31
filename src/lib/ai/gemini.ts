@@ -21,6 +21,7 @@ function getClient(): GoogleGenAI {
 }
 
 export const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+export const DEFAULT_GROQ_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
 
 export type ProjectAnalysis = {
   projectType: string;
@@ -133,7 +134,7 @@ Guidelines:
 - Keep every field concise. Feature and risk lists are short arrays of tight phrases, not paragraphs.`;
 
 const TIMEOUT_MS = 25_000;
-const PUBLIC_CHAT_TIMEOUT_MS = 12_000;
+const PUBLIC_CHAT_TIMEOUT_MS = 18_000;
 
 /**
  * Generate structured analysis. Throws on failure — caller handles.
@@ -190,37 +191,210 @@ Rules:
 - Always end with a complete sentence (never cut off mid-thought).
 - Use plain text only (no markdown tables or code blocks).`;
 
-/**
- * Public chatbot helper for unauthenticated visitors.
- */
-export async function answerPublicChat(message: string): Promise<string> {
-  const client = getClient();
+function isLikelyIncompleteReply(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  // Clear truncation markers.
+  if (/[,:;]\s*$/.test(t)) return true;
+  if (/\b(and|or|but|because|since|with|for|to|of|in|on|at|through|from)\s*$/i.test(t)) return true;
+  // If missing punctuation AND already long, it's likely clipped.
+  if (!/[.!?]"?$/.test(t) && t.length > 80) return true;
+  return false;
+}
 
+function finalizeReply(text: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) {
+    return "I can help with services, pricing, timelines, and project planning. Share your goal and I will suggest the best next step.";
+  }
+
+  if (/[.!?]"?$/.test(cleaned)) return cleaned;
+
+  const lastSentenceEnd = Math.max(cleaned.lastIndexOf("."), cleaned.lastIndexOf("!"), cleaned.lastIndexOf("?"));
+  if (lastSentenceEnd >= 0) return cleaned.slice(0, lastSentenceEnd + 1).trim();
+
+  // If content is meaningful but lacks punctuation, normalize softly.
+  if (cleaned.length >= 30) return `${cleaned}.`;
+
+  return "I can help with services, pricing, timelines, and project planning. Share your goal and I will suggest the best next step.";
+}
+
+type PublicChatConfig = { systemInstruction: string; temperature: number; maxOutputTokens: number };
+
+async function generatePublicChatText(
+  client: GoogleGenAI,
+  contents: string,
+  configBase: PublicChatConfig,
+): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUBLIC_CHAT_TIMEOUT_MS);
-
   try {
     const response = await client.models.generateContent({
       model: DEFAULT_MODEL,
-      contents: `Visitor question:\n\n"${message.trim()}"\n\nRespond as the website assistant.`,
-      config: {
-        systemInstruction: PUBLIC_CHAT_SYSTEM_INSTRUCTION,
-        temperature: 0.35,
-        maxOutputTokens: 420,
-        abortSignal: controller.signal,
+      contents,
+      config: { ...configBase, abortSignal: controller.signal },
+    });
+    return response.text?.trim() || "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type GroqChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+function getGroqApiKey(): string | null {
+  const key = process.env.GROQ_API_KEY?.trim();
+  return key ? key : null;
+}
+
+function isGroqLimitError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { status?: unknown }).status;
+  if (status === 429) return true;
+  const message = String((err as { message?: unknown }).message || "").toLowerCase();
+  return /(quota|rate limit|limit exceeded|too many requests|insufficient_quota|resource exhausted)/.test(message);
+}
+
+async function generatePublicChatTextViaGroq(
+  contents: string,
+  configBase: PublicChatConfig,
+): Promise<string> {
+  const apiKey = getGroqApiKey();
+  if (!apiKey) throw new Error("GROQ_API_KEY is not configured.");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLIC_CHAT_TIMEOUT_MS);
+  try {
+    const messages: GroqChatMessage[] = [
+      { role: "system", content: configBase.systemInstruction },
+      { role: "user", content: contents },
+    ];
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        model: DEFAULT_GROQ_MODEL,
+        messages,
+        temperature: configBase.temperature,
+        max_tokens: configBase.maxOutputTokens,
+      }),
+      signal: controller.signal,
+      cache: "no-store",
     });
 
-    const text = response.text?.trim();
-    if (!text) throw new Error("Empty response from Gemini");
-    return text;
+    const raw = await response.text();
+    let json: unknown = null;
+    try {
+      json = raw ? JSON.parse(raw) : null;
+    } catch {
+      // keep raw path for error details
+    }
+
+    if (!response.ok) {
+      const message =
+        (json as { error?: { message?: string } } | null)?.error?.message ||
+        `Groq request failed with status ${response.status}`;
+      const err = new Error(message) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
+    }
+
+    const content = (json as { choices?: Array<{ message?: { content?: string } }> } | null)?.choices?.[0]?.message
+      ?.content;
+    return typeof content === "string" ? content.trim() : "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Public chatbot helper for unauthenticated visitors.
+ */
+export async function answerPublicChat(
+  message: string,
+  history: Array<{ role: "user" | "assistant"; content: string }> = [],
+): Promise<string> {
+  try {
+    const configBase = {
+      systemInstruction: PUBLIC_CHAT_SYSTEM_INSTRUCTION,
+      temperature: 0.25,
+      maxOutputTokens: 520,
+    } as const;
+
+    const historyText =
+      history.length > 0
+        ? history
+            .slice(-8)
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+            .join("\n")
+        : "No prior context.";
+
+    const promptForModel = `Conversation so far:
+${historyText}
+
+Latest visitor question:
+"${message.trim()}"
+
+Respond as the website assistant.`;
+
+    const hasGroq = !!getGroqApiKey();
+    const geminiClient = hasGroq ? null : getClient();
+    let groqLimited = false;
+    const generate = async (contents: string) => {
+      if (hasGroq && !groqLimited) {
+        try {
+          return await generatePublicChatTextViaGroq(contents, configBase);
+        } catch (err) {
+          if (!isGroqLimitError(err)) throw err;
+          groqLimited = true;
+        }
+      }
+      const fallbackClient = geminiClient ?? getClient();
+      return await generatePublicChatText(fallbackClient, contents, configBase);
+    };
+
+    const firstText = await generate(promptForModel);
+
+    if (!firstText) throw new Error("Empty response from Gemini");
+    if (!isLikelyIncompleteReply(firstText)) return finalizeReply(firstText);
+
+    // One self-healing retry for partial/truncated responses.
+    const retryText = await generate(
+      `Rewrite the answer to be complete and concise.
+
+Visitor question:
+"${message.trim()}"
+
+Draft answer:
+"${firstText}"
+
+Return a complete answer in 2-4 sentences.`,
+    );
+    if (retryText && !isLikelyIncompleteReply(retryText)) return finalizeReply(retryText);
+
+    // Final repair pass: force a clean, complete answer.
+    const repairSource = retryText || firstText;
+    const repairText = await generate(
+      `Write exactly 2 complete sentences for this visitor question.
+Do not leave any sentence unfinished.
+
+Visitor question:
+"${message.trim()}"
+
+Draft:
+"${repairSource}"`,
+    );
+    if (repairText) return finalizeReply(repairText);
+    return finalizeReply(repairSource);
   } catch (err) {
     if (!isProd) {
       // eslint-disable-next-line no-console
       console.error("[gemini] public chat failed", err);
     }
     throw new Error("Chat assistant unavailable");
-  } finally {
-    clearTimeout(timer);
   }
 }

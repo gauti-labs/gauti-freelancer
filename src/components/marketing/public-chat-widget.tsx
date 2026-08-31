@@ -16,6 +16,7 @@ const WELCOME_MESSAGE =
 const QUICK_ACTIONS = [
   { type: "ask" as const, label: "Services", prompt: "What services do you offer and who are they best for?" },
   { type: "ask" as const, label: "Pricing", prompt: "Can you explain the pricing tiers and what is included?" },
+  { type: "ask" as const, label: "Timeline", prompt: "What timeline should I expect from inquiry to delivery?" },
   { type: "link" as const, label: "Start a Project", href: "/start-a-project" },
 ];
 
@@ -69,10 +70,14 @@ export function PublicChatWidget() {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
 
     try {
+      const history = messages
+        .filter((m) => m.content !== WELCOME_MESSAGE)
+        .slice(-8)
+        .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/public-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, history }),
         keepalive: true,
       });
       const data = (await res.json()) as { ok?: boolean; reply?: string; error?: string };
@@ -96,7 +101,7 @@ export function PublicChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60] sm:bottom-6 sm:right-6">
+    <div className="fixed z-[80] bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-6 sm:right-6">
       {open ? (
         <div
           className="w-[calc(100vw-1rem)] max-w-sm overflow-hidden rounded-xl border border-hairline/25 bg-base/95 shadow-2xl backdrop-blur-xl overscroll-contain sm:w-[calc(100vw-2rem)]"
@@ -127,7 +132,7 @@ export function PublicChatWidget() {
               {messages.length === 1 && !loading && (
                 <div className="flex flex-wrap gap-2">
                   {QUICK_ACTIONS.map((action) =>
-                    action.type === "ask" ? (
+                  action.type === "ask" ? (
                       <button
                         key={action.label}
                         type="button"
@@ -213,10 +218,10 @@ export function PublicChatWidget() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open chat assistant"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-gold/40 bg-base/90 text-sm text-ink shadow-[0_12px_30px_-18px_hsl(var(--gold-primary)/0.8)] backdrop-blur-md transition-colors hover:border-gold/70 hover:text-gold sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5"
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-gold/60 bg-base/95 px-4 text-sm font-medium text-ink shadow-[0_20px_40px_-20px_hsl(var(--gold-primary)/0.95)] backdrop-blur-md transition-colors hover:border-gold hover:text-gold"
         >
-          <MessageCircle className="h-4 w-4 text-gold" />
-          <span className="hidden sm:inline">Ask AI</span>
+          <MessageCircle className="h-4 w-4 text-gold" strokeWidth={2.25} />
+          <span>Ask AI</span>
         </button>
       )}
     </div>

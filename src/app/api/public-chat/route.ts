@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isAvailable("GEMINI_API_KEY")) {
+  if (!isAvailable("GROQ_API_KEY") && !isAvailable("GEMINI_API_KEY")) {
     return NextResponse.json(
       {
         ok: true,
@@ -68,15 +68,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const reply = await answerPublicChat(parsed.data.message);
+    const reply = await answerPublicChat(parsed.data.message, parsed.data.history ?? []);
     return NextResponse.json({ ok: true, reply }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json(
       {
-        ok: false,
-        error: "Assistant is temporarily unavailable. Please try again shortly.",
+        ok: true,
+        reply:
+          "I hit a temporary delay while generating that answer. Please ask again, or share your project goal and I will help with services, pricing, and next steps.",
       },
-      { status: 502 },
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 }
