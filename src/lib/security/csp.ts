@@ -19,7 +19,7 @@ export function buildCsp(nonce: string | undefined, isDev: boolean): string {
   // Fonts are loaded from Google Fonts via <link> in layout.tsx.
   const style = isDev
     ? `'self' 'unsafe-inline' https://fonts.googleapis.com`
-    : `'self' 'nonce-${nonce}' https://fonts.googleapis.com`;
+    : `'self' 'nonce-${nonce}' 'unsafe-inline' https://fonts.googleapis.com`;
 
   const directives: Record<string, string> = {
     "default-src": "'self'",

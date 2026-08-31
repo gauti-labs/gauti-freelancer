@@ -51,7 +51,7 @@ export default async function SignInPage({
   const callbackUrl = safeCallback(params.callbackUrl);
   const error = params.error;
 
-  const hasGoogle = !!process.env.AUTH_GOOGLE_ID;
+  const hasGoogle = !!process.env.AUTH_GOOGLE_ID && !!process.env.AUTH_GOOGLE_SECRET;
   const hasResend = !!process.env.AUTH_RESEND_KEY;
 
   return (
@@ -73,8 +73,8 @@ export default async function SignInPage({
 
         {!hasGoogle && !hasResend && (
           <p className="mt-6 rounded-md border border-gold/30 bg-gold/5 px-4 py-3 text-sm text-gold">
-            No auth providers configured. Set <code>AUTH_GOOGLE_ID</code> / <code>AUTH_GOOGLE_SECRET</code> and/or{" "}
-            <code>AUTH_RESEND_KEY</code> in <code>.env.local</code>.
+            No auth providers configured. Set both <code>AUTH_GOOGLE_ID</code> and <code>AUTH_GOOGLE_SECRET</code>,
+            and/or <code>AUTH_RESEND_KEY</code> in <code>.env.local</code>.
           </p>
         )}
 
