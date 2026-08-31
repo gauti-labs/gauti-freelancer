@@ -3,7 +3,7 @@ import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import { authConfig } from "./auth.config";
-import { getMongoClient } from "./lib/db/mongodb";
+import { getConnectedMongoClient } from "./lib/db/mongodb";
 import { isAdminEmail } from "./lib/auth/admin";
 
 declare module "next-auth" {
@@ -23,7 +23,7 @@ declare module "@auth/core/jwt" {
   }
 }
 
-const mongoClient = getMongoClient();
+const hasMongo = !!process.env.MONGODB_URI;
 
 const providers = [
   ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
@@ -46,7 +46,7 @@ const providers = [
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: mongoClient ? MongoDBAdapter(mongoClient) : undefined,
+  adapter: hasMongo ? MongoDBAdapter(() => getConnectedMongoClient()) : undefined,
   providers,
   callbacks: {
     ...authConfig.callbacks,

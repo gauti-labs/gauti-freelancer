@@ -13,10 +13,13 @@ if (!uri) {
 const options = {};
 
 let mongoClient: MongoClient | null = null;
+let mongoClientPromise: Promise<MongoClient> | null = null;
 
 declare global {
   // eslint-disable-next-line no-var
   var _mongoClient: MongoClient | undefined;
+  // eslint-disable-next-line no-var
+  var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
 function getMongoClientInstance(): MongoClient | null {
@@ -33,10 +36,48 @@ function getMongoClientInstance(): MongoClient | null {
   return mongoClient;
 }
 
-export async function getDb(): Promise<Db> {
+function resetCachedClient() {
+  if (process.env.NODE_ENV === "development") {
+    global._mongoClient = undefined;
+    global._mongoClientPromise = undefined;
+  } else {
+    mongoClient = null;
+    mongoClientPromise = null;
+  }
+}
+
+function createClientPromise(client: MongoClient): Promise<MongoClient> {
+  return client.connect().then(() => client).catch((err) => {
+    resetCachedClient();
+    throw err;
+  });
+}
+
+export function getMongoClientPromise(): Promise<MongoClient> | null {
   const client = getMongoClientInstance();
-  if (!client) throw new Error("MongoDB is not configured. Set MONGODB_URI.");
-  await client.connect();
+  if (!client) return null;
+
+  if (process.env.NODE_ENV === "development") {
+    if (!global._mongoClientPromise) {
+      global._mongoClientPromise = createClientPromise(client);
+    }
+    return global._mongoClientPromise;
+  }
+
+  if (!mongoClientPromise) {
+    mongoClientPromise = createClientPromise(client);
+  }
+  return mongoClientPromise;
+}
+
+export async function getConnectedMongoClient(): Promise<MongoClient> {
+  const promise = getMongoClientPromise();
+  if (!promise) throw new Error("MongoDB is not configured. Set MONGODB_URI.");
+  return await promise;
+}
+
+export async function getDb(): Promise<Db> {
+  const client = await getConnectedMongoClient();
   return client.db(dbName);
 }
 
