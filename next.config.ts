@@ -9,12 +9,14 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
 ];
 
+const useLocalWindowsDistDir = process.platform === "win32" && !process.env.VERCEL;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // OneDrive on Windows can break recursive cleanup of the default ".next" path.
-  // Using a dedicated dist directory avoids repeated EINVAL readlink failures.
-  distDir: ".next-dev",
+  // Use a dedicated dist directory only for local Windows runs.
+  distDir: useLocalWindowsDistDir ? ".next-dev" : ".next",
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
