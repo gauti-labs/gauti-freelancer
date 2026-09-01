@@ -24,6 +24,7 @@ declare module "@auth/core/jwt" {
 }
 
 const hasMongo = !!process.env.MONGODB_URI;
+const authDatabaseName = process.env.MONGODB_DB || "gautam_goyal";
 
 const providers = [
   ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
@@ -46,7 +47,11 @@ const providers = [
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: hasMongo ? MongoDBAdapter(() => getConnectedMongoClient()) : undefined,
+  adapter: hasMongo
+    ? MongoDBAdapter(() => getConnectedMongoClient(), {
+        databaseName: authDatabaseName,
+      })
+    : undefined,
   providers,
   callbacks: {
     ...authConfig.callbacks,
