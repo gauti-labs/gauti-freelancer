@@ -1,6 +1,17 @@
+function resolveSiteUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl.replace(/\/$/, "")}`;
+
+  return "http://localhost:3000";
+}
+
 export const site = {
   name: "Gautam Goyal",
   brand: "Gautam Goyal — Digital Architect",
+  alternateBrand: "Gauti Freelancer",
   role: "Digital Architect",
   tagline: "I engineer digital products that turn ambitious ideas into reality.",
   description:
@@ -10,10 +21,13 @@ export const site = {
   education: "Bachelor of Engineering in Computer Science",
   location: "India",
   email: "gautamgoyal1996@gmail.com",
-  url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+  url: resolveSiteUrl(),
   ogImagePath: "/opengraph-image",
   keywords: [
     "Gautam Goyal",
+    "Gauti Freelancer",
+    "gauti-freelancer",
+    "gauti freelancer",
     "Digital Architect",
     "Full-stack developer",
     "AI developer",

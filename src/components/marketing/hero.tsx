@@ -40,6 +40,9 @@ export function Hero() {
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-muted text-pretty">
             Full-stack engineering, artificial intelligence, automation and cloud — from architecture to production.
           </p>
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-ink-subtle">
+            Also known online as <span className="text-ink">Gauti Freelancer</span>.
+          </p>
 
           <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <ButtonLink href="/start-a-project" variant="primary" size="lg">
